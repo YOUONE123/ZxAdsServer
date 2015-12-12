@@ -1,0 +1,238 @@
+B01_001
+
+        // Create a Lua state
+        LuaStateEx luaState = new LuaStateEx();
+
+        try {
+    			luaState.load(new FileInputStream( new File(".\\script\\test.lua")), "=simple","t");
+
+                // Evaluate the chunk, thus defining the function
+                luaState.call(0, 0); // No arguments, no returns
+
+                luaState.pushJavaObject(Effect.class);
+                luaState.setGlobal("Effect");
+                luaState.pushJavaObject(System.out);
+                luaState.setGlobal("println");
+
+                // Prepare a function call
+                luaState.getGlobal("Card"); // Push the function on the stack
+                luaState.getField(-1, "add"); // Push the function on the stack
+                luaState.pushJavaObject(new ZxCard("TEST1")); // Push argument #1
+                luaState.pushJavaObject(System.out);
+                // Call
+                luaState.call(2, 1); // 2 arguments, 1 return
+
+                // Get and print result
+                System.out.println("According to Lua, 1 + 1 = " + luaState.toInteger(1));
+
+                // pop result
+                luaState.pop(1);
+
+                // pop global "Card"
+                luaState.pop(1);
+
+                luaState.printStack();
+        } catch (IOException e) {
+			// TODO 自動生成された catch ブロック
+			e.printStackTrace();
+		} finally {
+                luaState.close();
+        }
+
+        ZxCard card = new ZxCard("B01_001");
+
+        card.Initialize();
+
+        card.getEffects().get(0).isCondition(null);
+
+        card.getEffects().get(0).operation(null);
+        System.out.println(card.getEffects().size());
+
+
+OldCards作らない
+→MOVEした時とかどうする？
+	→フラグ管理でいい
+		→TIMING_MOVE_TO_TRASH + TIMING_MOVE_FROM_DECKみたいな
+			→最後にトラッシュに送られたカードとかの効果は？
+				→TIMINGに送られたタイミング（時刻みたいなの）を保存する様にする
+OldCards作る
+→基本的にMOVE前の物は参照しないので、なくて良い
+
+せっかくZXは起動効果常在効果自動効果と別々になってくれているんだから、
+CreateEffectもその分作ろう
+→CreateIgnitionEffect
+	遊戯王も文句無しのIgnition
+→CreateMandatoryEffect
+	→自動効果。遊戯王で言う強制効果
+	→ゼクスだとAutoEffectか？遊戯王だとMandatoryなんだが、、、
+	→ゼクスは基本強制発動やし、、、
+→CreateContinuousEffect
+	→常在効果。遊戯王で言う永続効果
+	→ゼクスだとResidentEffectか？
+
+Effectを持っているカードと、そのEffectを作成したカードと別々で持つ
+	→○○の効果により～等の効果があった場合、これで参照出来る
+
+CreateTriggerEffect
+	→Type
+	→Trigger
+	→Operation
+	→トリガーがTrueになったらOperationをする
+CreateIgnitionEffect
+	→Type
+	→SetCode
+	→Operation
+	→ConditionがTrueの時、優先権が回ってきたら使う
+CreateContinuousEffect
+	→Type
+	→Condition
+	→Operation
+	→Reset
+	→ConditionがTrueの時、Operationをする
+	→Resetで
+	→Resetの状態になったら、Operationで上げたPower等を元に戻す
+		→上げる方法は？
+			→遊戯王はe:SetCodeで攻撃力アップかのフラグ、e:SetValueで上げる数値を指定、などとしている
+			→複数のパラメータを上げる場合は、それ毎にEffectを定義してRegisterしている
+				→いい感じ。俺達もこれで行こう。
+	→また、カードが破壊された場合（isOld）もOperationを元に戻す
+Typeは効果のタイプ。
+遊戯王ではCodeで指定出来ている場合はそれでOK
+	→それもいいね
+
+SetCode
+→効果をこれに入れる
+→例えば、○○時に発動させる、対象にならない、破壊されない、攻撃力をアップさせる等、ほとんどの物をここで設定出来る
+→また、SetValueで設定した値をSetCodeで参照する。例えば1000と入力し、Codeに攻撃力UPとしたら、攻撃力が1000UPする
+
+SetValue
+→Int、Stringと、関数が入る。
+
+Ignitionとかをわけない奴
+CreateEffect
+	→Type
+		→効果のタイプ。起動効果か永続効果か自動効果か。
+		→遊戯王だと魔法の効果、罠の効果、任意の誘発、任意の誘発即時、強制の～等があるが、ゼクスはそんなない。
+		→EFFECT_TYPE_SINGLEとかはいるか・・・？
+	→SetCategory
+		→どういう事をする効果か。
+		→ドローするならドロー、モンスター出すならモンスター出す、みたいな事を入れる
+	→SetRange
+		→どこで発動されるか。モンスターならモンスターゾーン、的な。
+		→白でよくある自軍エリアとかのテンキーで言う1,2,3とかの指定をここでする
+		→もちろんチャージで発動出来る効果だったりしたらチャージを入れる
+		→これを満たすと起動効果じゃなければSetCodeに行く。
+	→SetCode
+		→どのタイミングで発動するか、トリガーは何か、効果を発動させる場合、その効果は何か、等
+		→簡単にいうと、○○の時～とかを入れる。
+		→これが満たされた後、Conditionが検査される。Conditionを満たしたら即発動とか出来る。
+		→つまり起動効果の時はいらない。発動タイミングとか関係ない為。
+		→EFFECT_UP_ATTACKとかも可能。
+		→EVENT_DRAW等だったら、ドロー時に発動、Condition調査みたいな。EVENT_~だったら、起動タイミングで、EFFECT_~だったら、効果
+	→SetValue
+		→SetCodeで使う。SetCodeにEFFECT_UP_ATTACKとあって、SetValueに1000と会ったら、攻撃力が1000アップする永続効果。
+		→JavaObject型と、Lua関数を入れられる様に。
+	→Condition
+		→どの状態なら発動出来る効果なのか。
+	→Operation
+		→効果が発動した時の操作。
+		→ドローするごとに、攻撃力を1000アップさせる、という効果だった場合、SetCodeにEVENT_DRAWを入れ、ここに攻撃力が1000アップするエフェクトを作る処理を入れる。
+	→Reset
+		→これが満たされると効果がなくなる（削除される）
+		→ドローする毎にターン終了時まで攻撃力を1000アップさせる、とかの場合に設定する。
+	→SetCountLimit
+		→1ターンに一度しか発動出来ないなら、ここに１と入れる
+	→SetHintTiming
+		→たぶん効果を発動しますか？って出す時のタイミングだと思う
+
+フィールドからチャージにいどうする時
+	OperationでputToCharge(ZxCard card)を使う
+	cardから今いるListを参照する
+
+起動効果
+TypeがEFFECT_TYPE_IGNITION
+SetRange,SeConditionが満たされた時発動出来る
+発動するとOperationが実行される
+
+自動効果
+TypeにEFFECT_TYPE_TRIGGER
+Codeに発動するタイミングを入れる
+更に詳細なタイミングはSetValueで設定する
+RangeとConditionを満たしていたら、そのタイミングで発動される
+発動するとOperationが実行される
+
+常在効果
+TypeにEFFECT_TYPE_CONTINUOUS
+Codeに効果を入れる（攻撃力アップ、起動効果を発動できない、対象にならない等）
+効果の詳細はSetValueで設定する（Codeで攻撃力UPを設定していたら、1000入力で1000攻撃力UP）
+SetRangeとConditionを満たしている必要がある
+発動するとOperationが実行される？
+
+○○の時、ターン終了時まで攻撃力1000アップ
+→自動効果で時を指定し、Operationでターン終了時まで1000アップする効果を作成し、カードに付与する
+
+○○の時、スクエアのゼクスを1体選び2000ダメージ
+→自動効果で時を指定し、Operationで選んでダメージを与える。
+
+【常在】起動効果を発動できない
+→常在効果でCodeに効果を入れる
+
+
+CodeのEVENTについて
+	→Codeのイベントは、そのエフェクトを持っているカードに対するイベントと、ゲーム全体に対するイベントの両方の側面がある。
+	→例えば、EVENT_DRAWだったら、ゲーム中に誰かがドローした時、になるし、EVENT_TO_HANDだったら、効果を持っているカードが手札に加えられた時になる。
+	→そして、Reasonには、そのイベントが起きた理由が入る。EVENT_DRAWなら、GAMEOPERATIONに、EVEN_TO_HANDなら、CARDBOARDのReasonに加えられる。
+	→イベントをチェックしたら、イベントとReasonはリセットされる
+	
+カードに何かしらの変更があった時、必ずReasonが設定される。
+
+カードをおいた時
+	→リストから削除しておくリストに入れる。
+	→ロケーションを設定
+	→EVENT_TO_HANDを設定
+	→チェック
+
+カードを弾いた時
+	→リストから削除しておくリストに入れる。
+	→ロケーションを設定
+	→EVENT_TO_HANDを設定
+	→チェック
+	→EVENT_DRAWを設定
+	→チェック
+		→2重に誘発しないか？？
+			→EVENT＿TO＿HANDとEVENT_DRAWは両方一緒に設定出来ないので大丈夫
+
+LuaGameOperationableにキャストしても元のオブジェクトの関数参照出来るやんLUA、、、
+→Luaに渡すGameOperation等はラップしよう・・・めんどいけど・・・
+
+ステートマシンでイベントを発生させるか
+それとも、ステートマシンはChangePhaseなどの関数を呼ぶだけにするのか。
+	→イベントを発生させる
+		→大変じゃね
+	→ChangePhase等の関数を呼ぶだけ
+		→ChangePhaseと言っているのにChangePhaseしてなくね
+		→実際はイベントを変えているだけ・・・
+→イベントを発生させよう
+
+攻撃力1000アップ等の効果の実装
+→攻撃力を参照する時、そのカードの効果を見てから参照する
+	→Codeで判定。攻撃力UP等だったら、Value（１０００などがはいっている）を見て実行
+	→GetOriginalAttackとかが必要になってくるねえ
+
+後はRebootからEndまでのフェイズを充実させていけばOKか？
+→そろそろカード情報がほしいか？召喚するときとかに参照するもんなあ
+
+カード情報等
+→前撮ってきたSQLite使おう
+
+カードにSQLを読みこませる
+SQLヘルパーを作る（カード一覧等）
+後は順々に処理を実装していく
+
+Draw等、割り込みで入ってくる処理はどうしよう
+→優先権前処理を関数でやる（ステートマシン使わない）
+→ドローした時、ステートマシンを新たに作る。
+
+(\d)\t*$
+効果の定数説明一覧
+http://adsmod.cswiki.jp/index.php?%E3%83%AA%E3%83%95%E3%82%A1%E3%83%AC%E3%83%B3%E3%82%B9%2F%E5%8A%B9%E6%9E%9C%E9%96%A2%E9%80%A3
