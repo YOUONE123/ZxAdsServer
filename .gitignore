@@ -1,6 +1,7 @@
+
 # Java
 *.class
-*.jar
+bin/*.jar
 *.war
 *.ear
 

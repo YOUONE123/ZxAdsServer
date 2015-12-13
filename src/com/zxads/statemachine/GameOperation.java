@@ -467,12 +467,12 @@ public class GameOperation {
 	
 	public boolean PlayCard(Card card)
 	{
+		if(this.CheckPlayCard(card))return false;
+		
 		//zx or event
 		if( card.getType() == TYPE_ZX || card.getType() == TYPE_EFFECT_ZX)
 		{
 			//zx
-			if(this.CheckPlayCard(card))return false;
-			this.cards.
 		}
 		else if ( card.getType() == TYPE_EVENT)
 		{
@@ -484,6 +484,7 @@ public class GameOperation {
 			System.err.println("Error GameOperation PlayCard Unknown Type");
 			return false;
 		}
+		return true;
 	}
 	
 	public boolean PlayEffect(IEffect effect, int REASON)
